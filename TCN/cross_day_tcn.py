@@ -28,7 +28,7 @@ EPOCH_RUNS = int(os.environ.get("EPOCHS", 2))
 VALIDATION = os.environ.get("VALIDATION", "minival")   # or "next_day"
 # minival: early stopping checks held-out minutes of the training days (default; keeps all training days)
 # next_day: early stopping checks a different, unseen earlier day (costs one training day; no gain on M1)
-SMOOTHING = os.environ.get("SMOOTHING", "falcon")     # or "ema"
+SMOOTHING = os.environ.get("SMOOTHING", "ema")     # or "falcon"
 # applied to train, val, and test sessions alike
 
 
