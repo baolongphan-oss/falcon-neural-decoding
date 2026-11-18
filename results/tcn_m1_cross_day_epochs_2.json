@@ -1,0 +1,39 @@
+{
+  "task": "m1",
+  "epochs": 2,
+  "days": [
+    "20120926",
+    "20120927",
+    "20120928"
+  ],
+  "no_calibration": [
+    -0.16090716421604156,
+    0.5254798531532288,
+    0.36426112055778503
+  ],
+  "output_correction": [
+    0.32538241147994995,
+    0.5515037178993225,
+    0.45962342619895935
+  ],
+  "details": [
+    {
+      "no_calibration": -0.16090716421604156,
+      "output_correction": 0.32538241147994995,
+      "calibration_bins": 1405,
+      "scored_bins": 53071
+    },
+    {
+      "no_calibration": 0.5254798531532288,
+      "output_correction": 0.5515037178993225,
+      "calibration_bins": 792,
+      "scored_bins": 48436
+    },
+    {
+      "no_calibration": 0.36426112055778503,
+      "output_correction": 0.45962342619895935,
+      "calibration_bins": 1198,
+      "scored_bins": 53585
+    }
+  ]
+}
