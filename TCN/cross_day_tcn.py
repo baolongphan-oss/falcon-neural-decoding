@@ -24,6 +24,9 @@ TEST_DAYS = ("20120926", "20120927", "20120928")
 CALIBRATION_BINS = 3000         # first minute (3000 x 20ms)
 CORRECTION_ALPHA = 100.0        # ridge penalty for output correction (same as ridge team)
 EPOCH_RUNS = int(os.environ.get("EPOCHS", 2))
+VALIDATION = os.environ.get("VALIDATION", "next_day")   # or "minival"
+# next_day: early stopping checks a different, unseen earlier day (mimics a new day)
+# minival: early stopping checks held-out minutes of the training days (old behavior)
 
 
 def recording_day(path):
@@ -35,36 +38,59 @@ def recording_day(path):
 def split_files(day):
     """Return train/val/test files for one test day; train and val use only earlier days."""
     training_files = sorted(DATA_ROOT.glob("*held-in-calib/*.nwb"))
-    train = [f for f in training_files if recording_day(f) < day]
-    test = [f for f in training_files if recording_day(f) == day]
-
     validation_files = sorted(DATA_ROOT.glob("*held-in-minival/*.nwb"))
-    val = [f for f in validation_files if recording_day(f) < day]
+    test = [f for f in training_files if recording_day(f) == day]  # test is always the day itself
+
+    # one entry per day (a day can have several files)
+    earlier_days = sorted(set(recording_day(f) for f in training_files if recording_day(f) < day))
+    if VALIDATION == "next_day" and len(earlier_days) >= 2:
+        # hold out the latest earlier day (closest to current day) for validation
+        # train on the rest
+        val_day = earlier_days[-1]
+        train = [f for f in training_files if recording_day(f) < day and recording_day(f) != val_day]
+        # validation on the calibration files -- main recordings for the day, instead of minival
+        val = [f for f in training_files if recording_day(f) == val_day]
+    else:
+        train = [f for f in training_files if recording_day(f) < day]
+        val = [f for f in validation_files if recording_day(f) < day]
 
     # every split must have files, otherwise later steps fail
     if not train or not val or not test:
         raise ValueError(f"{day}: train={len(train)}, val={len(val)}, test={len(test)}")
+
+    # cannot have files in both train and val, else validation is meaningless
+    train_val_overlaps = list(set(train) & set(val))
+    if len(train_val_overlaps) > 0:
+        raise ValueError(f"Found overlaps between train and val: {train_val_overlaps}")
     return train, val, test
 
 
 def predict(model, sessions, stats, batch_size, device):
-    """Run a trained model on sessions; return predictions, targets (mV), and (session, t) per row."""
+    """Run a trained model on sessions; return predictions, targets (mV), (session, t) per row, and features."""
     y_mean, y_scale = stats["y_mean"], stats["y_scale"]
     dataset = Windows(sessions, stats["x_mean"], stats["x_scale"], y_mean, y_scale, stats["history"])
-    loader = DataLoader(dataset, batch_size=batch_size)  # no shuffle: rows stay aligned with dataset.index
+    loader = DataLoader(dataset, batch_size=batch_size)
+    # no shuffle: rows stay aligned with dataset.index
 
     model.eval()
     with torch.no_grad():
-        predictions, targets = [], []
+        predictions, targets, features = [], [], []
         for X, y in loader:
-            predictions.append(model(X.to(device)).cpu().numpy())
+            # same as model(X), split in two so we can keep the features
+            # last time step features: (batch, 64)
+            h = model.temporal(X.to(device))[:, :, -1]
+            predictions.append(model.head(h).cpu().numpy())
             targets.append(y.numpy())
+            # input to the head; used by anchored refit
+            features.append(h.cpu().numpy())
 
-    pred, target = np.concatenate(predictions), np.concatenate(targets)
+    pred, target, features = np.concatenate(predictions), np.concatenate(targets), np.concatenate(features)
+    # features stay as is (not muscle values)
     # convert values back to mV (for muscles data) for r^2 to match Ridge regression
     pred = pred * y_scale + y_mean 
     target = target * y_scale + y_mean
-    return pred, target, dataset.index # list of (session_id, time_bins)
+    # dataset.index: list of (session_id, time_bins)
+    return pred, target, dataset.index, features
 
 
 def score_day(pred, target, index):
@@ -100,7 +126,7 @@ def score_day(pred, target, index):
 
 # for each test day: split files, train on earlier days, predict, score
 if __name__ == "__main__":
-    results = {"task": TASK, "epochs": EPOCH_RUNS, "days": [], "no_calibration": [], "output_correction": [], "details": []}
+    results = {"task": TASK, "validation": VALIDATION, "epochs": EPOCH_RUNS, "days": [], "no_calibration": [], "output_correction": [], "details": []}
     for day in TEST_DAYS:
         train, val, test = split_files(day)
         print(day, [recording_day(f) for f in train],
@@ -108,7 +134,7 @@ if __name__ == "__main__":
                 [recording_day(f) for f in test], "\n")
         model, stats, _ = train_model(train, val, TASK, epochs=EPOCH_RUNS)  # short run to test the pipeline; full runs on GPU
         test_sessions = load_sessions(test, TASK)
-        pred, target, index = predict(model, test_sessions, stats, batch_size=BATCH_SIZE, device=DEVICE)
+        pred, target, index, features = predict(model, test_sessions, stats, batch_size=BATCH_SIZE, device=DEVICE)
         
         score_dict = score_day(pred, target, index)
         results["days"].append(day)
@@ -117,7 +143,7 @@ if __name__ == "__main__":
         results["details"].append(score_dict)
         print(day, score_dict, "\n")
 
-    out = Path("results") / f"tcn_{TASK}_cross_day_epochs_{EPOCH_RUNS}.json"
+    out = Path("results") / f"tcn_{TASK}_{VALIDATION}_cross_day_epochs_{EPOCH_RUNS}.json"
     out.parent.mkdir(exist_ok=True)
     out.write_text(json.dumps(results, indent=2))
     print(f"Saved: {out}")
