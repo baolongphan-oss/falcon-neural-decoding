@@ -25,9 +25,11 @@ TEST_DAYS = ("20120926", "20120927", "20120928")
 CALIBRATION_BINS = 3000         # first minute (3000 x 20ms)
 CORRECTION_ALPHA = 100.0        # ridge penalty for output correction (same as ridge team)
 EPOCH_RUNS = int(os.environ.get("EPOCHS", 2))
-VALIDATION = os.environ.get("VALIDATION", "next_day")   # or "minival"
-# next_day: early stopping checks a different, unseen earlier day (mimics a new day)
-# minival: early stopping checks held-out minutes of the training days (old behavior)
+VALIDATION = os.environ.get("VALIDATION", "minival")   # or "next_day"
+# minival: early stopping checks held-out minutes of the training days (default; keeps all training days)
+# next_day: early stopping checks a different, unseen earlier day (costs one training day; no gain on M1)
+SMOOTHING = os.environ.get("SMOOTHING", "falcon")     # or "ema"
+# applied to train, val, and test sessions alike
 
 
 def recording_day(path):
@@ -98,6 +100,15 @@ def score_day(pred, target, index, features, model, stats):
     """Score one test day: first minute of the first session = calibration, the rest = scored.
     Only actual movement (masked bins) is included.
     R²: 1 = perfect, 0 = no better than guessing the average, < 0 = worse.
+
+    Output correction: keep the model as is; 
+    learn its mistakes from the new day’s first minute 
+    and add a correction to every prediction afterward.
+
+    Anchored refit: freeze the whole network except the last layer; 
+    retrain that layer on the new day’s first minute, 
+    staying close to the old version.
+
     """
     session_ids = np.array([s for s, _ in index])
     time_bins = np.array([t for _, t in index])
@@ -111,6 +122,7 @@ def score_day(pred, target, index, features, model, stats):
     # how well does the model survive drift without any help
     no_calibration_r2 = r2_score(target[scored], pred[scored], multioutput="variance_weighted")
 
+    # baseline adaptation method
     # 2) output correction: learn a small fix from calibration errors, apply (i.e. add) it to scored rows (predictions)
     base = pred[calibration_rows]
     residual = target[calibration_rows] - base
@@ -118,6 +130,7 @@ def score_day(pred, target, index, features, model, stats):
     corr_preds = pred[scored] + correction.predict(pred[scored])
     output_correction_r2 = r2_score(target[scored], corr_preds, multioutput="variance_weighted")
 
+    # proposed calibration methods
     # 3) anchored refit
     W_old = model.head.weight.detach().cpu().numpy().T
     b_old = model.head.bias.detach().cpu().numpy()
@@ -142,20 +155,16 @@ def score_day(pred, target, index, features, model, stats):
 
 # for each test day: split files, train on earlier days, predict, score
 if __name__ == "__main__":
-<<<<<<< HEAD
-    results = {"task": TASK, "validation": VALIDATION, "epochs": EPOCH_RUNS, 
+    results = {"task": TASK, "validation": VALIDATION, "smoothing": SMOOTHING, "epochs": EPOCH_RUNS, 
                "days": [], "no_calibration": [], "output_correction": [], 
                "anchored_refit": [], "details": []}
-=======
-    results = {"task": TASK, "validation": VALIDATION, "epochs": EPOCH_RUNS, "days": [], "no_calibration": [], "output_correction": [], "details": []}
->>>>>>> 9c8ba1ae93ff6b68c40e930099661e3249344615
     for day in TEST_DAYS:
         train, val, test = split_files(day)
         print(day, [recording_day(f) for f in train],
                 [recording_day(f) for f in val],
                 [recording_day(f) for f in test], "\n")
-        model, stats, _ = train_model(train, val, TASK, epochs=EPOCH_RUNS)  # short run to test the pipeline; full runs on GPU
-        test_sessions = load_sessions(test, TASK)
+        model, stats, _ = train_model(train, val, TASK, epochs=EPOCH_RUNS, smoothing=SMOOTHING)  # short run to test the pipeline; full runs on GPU
+        test_sessions = load_sessions(test, TASK, smoothing=SMOOTHING)  # same smoothing as training
         pred, target, index, features = predict(model, test_sessions, stats, batch_size=BATCH_SIZE, device=DEVICE)
         
         score_dict = score_day(pred, target, index, features, model, stats)
@@ -166,7 +175,7 @@ if __name__ == "__main__":
         results["details"].append(score_dict)
         print(day, score_dict, "\n")
 
-    out = Path("results") / f"tcn_{TASK}_{VALIDATION}_cross_day_epochs_{EPOCH_RUNS}.json"
+    out = Path("results") / f"tcn_{TASK}_{VALIDATION}_{SMOOTHING}_cross_day_epochs_{EPOCH_RUNS}.json"
     out.parent.mkdir(exist_ok=True)
     out.write_text(json.dumps(results, indent=2))
     print(f"Saved: {out}")

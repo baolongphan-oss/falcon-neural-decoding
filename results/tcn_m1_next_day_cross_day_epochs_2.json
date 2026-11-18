@@ -1,0 +1,51 @@
+{
+  "task": "m1",
+  "validation": "next_day",
+  "epochs": 2,
+  "days": [
+    "20120926",
+    "20120927",
+    "20120928"
+  ],
+  "no_calibration": [
+    -0.16090716421604156,
+    0.20476457476615906,
+    0.48522239923477173
+  ],
+  "output_correction": [
+    0.32538241147994995,
+    0.43538424372673035,
+    0.5253814458847046
+  ],
+  "anchored_refit": [
+    0.36849470575356363,
+    0.46191546380971876,
+    0.546202026186279
+  ],
+  "details": [
+    {
+      "no_calibration": -0.16090716421604156,
+      "output_correction": 0.32538241147994995,
+      "anchored_refit": 0.36849470575356363,
+      "anchored_lambda": 100,
+      "calibration_bins": 1405,
+      "scored_bins": 53071
+    },
+    {
+      "no_calibration": 0.20476457476615906,
+      "output_correction": 0.43538424372673035,
+      "anchored_refit": 0.46191546380971876,
+      "anchored_lambda": 100,
+      "calibration_bins": 792,
+      "scored_bins": 48436
+    },
+    {
+      "no_calibration": 0.48522239923477173,
+      "output_correction": 0.5253814458847046,
+      "anchored_refit": 0.546202026186279,
+      "anchored_lambda": 100,
+      "calibration_bins": 1198,
+      "scored_bins": 53585
+    }
+  ]
+}
