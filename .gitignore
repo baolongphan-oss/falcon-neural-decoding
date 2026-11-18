@@ -1,0 +1,7 @@
+*.nwb
+falcon_data/
+falcon-env/
+__pycache__/
+*.pt
+.ipynb_checkpoints/
+.DS_Store
