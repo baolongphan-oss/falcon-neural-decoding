@@ -1,0 +1,21 @@
+# Python 3.12 recommended (3.15 lacks prebuilt PyTorch wheels)
+
+# Core
+numpy
+scipy
+pandas
+scikit-learn
+torch
+
+# FALCON data loading and config
+pynwb
+hydra-core
+edit_distance
+
+# Plotting and utilities
+matplotlib
+seaborn
+tqdm
+
+# Notebooks (local only; Colab already has Jupyter)
+jupyter
