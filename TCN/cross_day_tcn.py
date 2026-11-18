@@ -142,9 +142,13 @@ def score_day(pred, target, index, features, model, stats):
 
 # for each test day: split files, train on earlier days, predict, score
 if __name__ == "__main__":
+<<<<<<< HEAD
     results = {"task": TASK, "validation": VALIDATION, "epochs": EPOCH_RUNS, 
                "days": [], "no_calibration": [], "output_correction": [], 
                "anchored_refit": [], "details": []}
+=======
+    results = {"task": TASK, "validation": VALIDATION, "epochs": EPOCH_RUNS, "days": [], "no_calibration": [], "output_correction": [], "details": []}
+>>>>>>> 9c8ba1ae93ff6b68c40e930099661e3249344615
     for day in TEST_DAYS:
         train, val, test = split_files(day)
         print(day, [recording_day(f) for f in train],
