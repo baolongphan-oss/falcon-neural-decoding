@@ -7,7 +7,9 @@ Run from the folder above TCN: python -m TCN.cross_day_tcn
 
 from .train_refactored import train_model, load_sessions, DEVICE, BATCH_SIZE
 from .data_long import Windows
-from pathlib import Path 
+from pathlib import Path
+import argparse
+from datetime import datetime
 import numpy as np
 import os
 import json
@@ -67,6 +69,91 @@ def split_files(day):
         raise ValueError(f"Found overlaps between train and val: {train_val_overlaps}")
     return train, val, test
 
+def make_rolling_splits(files, min_train_days=1):
+    """Create chronological splits that preserve time order; training data grows on each split while validation
+    always performed on a later day. All recordings from a single day are kept together."""
+    if min_train_days < 1:
+        raise ValueError("min_train_days must be at least 1")
+
+    from collections import defaultdict
+    files_by_day = defaultdict(list)
+
+    for path in files:
+        day = recording_day(path)
+        files_by_day[day].append(path)
+
+    days = sorted(files_by_day)
+    if len(days) <= min_train_days:
+        raise ValueError("Not enough recording days to create a validation split")
+
+    splits = []
+
+    for i in range(min_train_days, len(days)):
+        train_days = days[:i]
+        val_day = days[i]
+
+        # Collect files from every day in train_days.
+        train_files = [
+            path
+            for day in train_days
+            for path in files_by_day[day]
+        ]
+
+        # Collect all files from val_day.
+        val_files = list(files_by_day[val_day])
+
+        # Append a dictionary describing this fold.
+        splits.append({
+            "train_days": train_days,
+            "val_day": val_day,
+            "train_files": train_files,
+            "val_files": val_files,
+        })
+
+    return splits
+
+def run_rolling_validation(splits, task, **train_kwargs):
+    """Train on expanding sets of earlier days and validate on the next day.
+
+    Each fold starts with a fresh model and training-only normalization.
+    Collect metrics from the epoch selected by lowest validation MSE.
+
+    Scores reflect both the validation day's difficulty and the amount of
+    training data. These are model-selection scores, not independent test scores."""
+    if not splits:
+        raise ValueError("No rolling-validation splits were provided")
+
+    results = []
+
+    for fold_id, split in enumerate(splits, start=1):
+        print(
+            f"Fold {fold_id}: "
+            f"train {split['train_days']} → validate {split['val_day']}"
+        )
+
+        # Train a fresh model for this fold.
+        model, stats, records = train_model(
+            train_files=split["train_files"],
+            val_files=split["val_files"],
+            task=task,
+            **train_kwargs,
+        )
+
+        # Find the metrics for the selected epoch.
+        best_record = min(records, key=lambda row: row["val_mse"])
+
+        # Record this fold's result.
+        results.append({
+            "fold": fold_id,
+            "train_days": split["train_days"],
+            "val_day": split["val_day"],
+            "best_epoch": best_record["epoch"],
+            "val_mse": best_record["val_mse"],
+            "val_r2_mean": best_record["val_r2_mean"],
+            "val_r2_sessions": best_record["val_r2_sessions"],
+        })
+
+    return results
 
 def predict(model, sessions, stats, batch_size, device):
     """Run a trained model on sessions; return predictions, targets (mV), (session, t) per row, and features."""
@@ -90,7 +177,7 @@ def predict(model, sessions, stats, batch_size, device):
     pred, target, features = np.concatenate(predictions), np.concatenate(targets), np.concatenate(features)
     # features stay as is (not muscle values)
     # convert values back to mV (for muscles data) for r^2 to match Ridge regression
-    pred = pred * y_scale + y_mean 
+    pred = pred * y_scale + y_mean
     target = target * y_scale + y_mean
     # dataset.index: list of (session_id, time_bins)
     return pred, target, dataset.index, features
@@ -101,12 +188,12 @@ def score_day(pred, target, index, features, model, stats):
     Only actual movement (masked bins) is included.
     R²: 1 = perfect, 0 = no better than guessing the average, < 0 = worse.
 
-    Output correction: keep the model as is; 
-    learn its mistakes from the new day’s first minute 
+    Output correction: keep the model as is;
+    learn its mistakes from the new day’s first minute
     and add a correction to every prediction afterward.
 
-    Anchored refit: freeze the whole network except the last layer; 
-    retrain that layer on the new day’s first minute, 
+    Anchored refit: freeze the whole network except the last layer;
+    retrain that layer on the new day’s first minute,
     staying close to the old version.
 
     """
@@ -153,33 +240,133 @@ def score_day(pred, target, index, features, model, stats):
         "scored_bins": int(scored.sum()) # number of movement bins graded (rest of the day)
     }
 
-# for each test day: split files, train on earlier days, predict, score
-if __name__ == "__main__":
-    results = {"task": TASK, "validation": VALIDATION, "smoothing": SMOOTHING, "epochs": EPOCH_RUNS, 
-               "days": [], "no_calibration": [], "output_correction": [], 
-               "anchored_refit": [], "details": []}
+def run_rolling_calibration(splits, task, **train_kwargs):
+    results = []
+
+    for fold_id, split in enumerate(splits, start=1):
+        early_stop_files = sorted(
+            path
+            for path in DATA_ROOT.glob("*held-in-minival/*.nwb")
+            if recording_day(path) in split["train_days"]
+        )
+
+        if not early_stop_files:
+            raise ValueError("No earlier-day minival files found")
+
+        model, stats, records = train_model(
+            train_files=split["train_files"],
+            val_files=early_stop_files,
+            task=task,
+            **train_kwargs,
+        )
+
+        smoothing = train_kwargs.get("smoothing", "ema")
+        alpha = train_kwargs.get("alpha", 0.2)
+
+        sessions = load_sessions(
+            split["val_files"],
+            task,
+            smoothing=smoothing,
+            alpha=alpha,
+        )
+
+        pred, target, index, features = predict(
+            model,
+            sessions,
+            stats,
+            batch_size=train_kwargs.get("batch_size", BATCH_SIZE),
+            device=next(model.parameters()).device,
+        )
+
+        scores = score_day(
+            pred, target, index, features, model, stats
+        )
+
+        results.append({
+            "fold": fold_id,
+            "train_days": split["train_days"],
+            "calibration_day": split["val_day"],
+            "best_epoch": min(
+                records, key=lambda row: row["val_mse"]
+            )["epoch"],
+            **scores,
+        })
+
+    return results
+
+def run_cross_day(**train_kwargs):
+    """Original experiment: earlier days train/validate, then calibrate a later day."""
+    smoothing = train_kwargs.get("smoothing", SMOOTHING)
+    results = {"task": TASK, "validation": VALIDATION, "smoothing": smoothing,
+               "epochs": train_kwargs.get("epochs", EPOCH_RUNS), "days": [],
+               "no_calibration": [], "output_correction": [], "anchored_refit": [],
+               "details": []}
     for day in TEST_DAYS:
         train, val, test = split_files(day)
-        print(day, [recording_day(f) for f in train],
-                [recording_day(f) for f in val],
-                [recording_day(f) for f in test], "\n")
-        model, stats, _ = train_model(train, val, TASK, epochs=EPOCH_RUNS, smoothing=SMOOTHING)  # short run to test the pipeline; full runs on GPU
-        test_sessions = load_sessions(test, TASK, smoothing=SMOOTHING)  # same smoothing as training
-        pred, target, index, features = predict(model, test_sessions, stats, batch_size=BATCH_SIZE, device=DEVICE)
-        
-        score_dict = score_day(pred, target, index, features, model, stats)
+        print(day, "train", [recording_day(f) for f in train],
+              "validate", [recording_day(f) for f in val], flush=True)
+        model, stats, _ = train_model(train, val, TASK, **train_kwargs)
+        sessions = load_sessions(test, TASK, smoothing=smoothing,
+                                 alpha=train_kwargs.get("alpha", 0.2))
+        pred, target, index, features = predict(
+            model, sessions, stats, batch_size=BATCH_SIZE,
+            device=next(model.parameters()).device)
+        scores = score_day(pred, target, index, features, model, stats)
         results["days"].append(day)
-        results["no_calibration"].append(score_dict["no_calibration"])
-        results["output_correction"].append(score_dict["output_correction"])
-        results["anchored_refit"].append(score_dict["anchored_refit"])
-        results["details"].append(score_dict)
-        print(day, score_dict, "\n")
+        for method in ("no_calibration", "output_correction", "anchored_refit"):
+            results[method].append(scores[method])
+        results["details"].append(scores)
+    return results
 
-    out = Path("results") / f"tcn_{TASK}_{VALIDATION}_{SMOOTHING}_cross_day_epochs_{EPOCH_RUNS}.json"
-    out.parent.mkdir(exist_ok=True)
-    out.write_text(json.dumps(results, indent=2))
-    print(f"Saved: {out}")
 
-    print("Mean no calibration:", np.mean(results["no_calibration"]))
-    print("Mean output correction:", np.mean(results["output_correction"]))
-    print("Mean anchored refit:", np.mean(results["anchored_refit"]))
+def main(argv=None):
+    """Select an experiment without editing the module's __main__ block."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--mode", choices=("cross-day", "rolling-validation", "rolling-calibration"),
+                        default="cross-day")
+    parser.add_argument("--epochs", type=int, default=EPOCH_RUNS)
+    parser.add_argument("--patience", type=int, default=8)
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--smoothing", choices=("ema", "falcon"), default=SMOOTHING)
+    parser.add_argument("--hidden", type=int)
+    parser.add_argument("--dropout", type=float)
+    parser.add_argument("--weight-decay", type=float)
+    parser.add_argument("--out", type=Path, help="New output directory; existing directories are protected")
+    args = parser.parse_args(argv)
+    if args.epochs < 1 or args.patience < 1:
+        parser.error("epochs and patience must be positive")
+    rolling = args.mode != "cross-day"
+    settings = dict(epochs=args.epochs, patience=args.patience, seed=args.seed,
+                    smoothing=args.smoothing,
+                    hidden=args.hidden if args.hidden is not None else (32 if rolling else 64),
+                    dropout=args.dropout if args.dropout is not None else (0.3 if rolling else 0.1),
+                    weight_decay=args.weight_decay if args.weight_decay is not None else (1e-3 if rolling else 1e-4))
+    if settings["hidden"] < 1 or not 0 <= settings["dropout"] < 1 or settings["weight_decay"] < 0:
+        parser.error("Require hidden > 0, 0 <= dropout < 1, and weight-decay >= 0")
+    out = args.out or Path("runs") / (
+        f"{args.mode}_epochs_{args.epochs}_seed_{args.seed}_"
+        + datetime.now().strftime("%Y%m%d_%H%M%S_%f"))
+    if out.exists():
+        parser.error(f"Output directory already exists: {out}")
+    out.mkdir(parents=True, exist_ok=False)
+    (out / "config.json").write_text(json.dumps(dict(
+        mode=args.mode, task=TASK, data_root=str(DATA_ROOT.resolve()),
+        cross_day_validation=VALIDATION, settings=settings), indent=2))
+    print(f"Saving results to: {out}", flush=True)
+    if args.mode == "cross-day":
+        results = run_cross_day(**settings)
+    else:
+        splits = make_rolling_splits(sorted(DATA_ROOT.glob("*held-in-calib/*.nwb")))
+        runner = run_rolling_validation if args.mode == "rolling-validation" else run_rolling_calibration
+        results = runner(splits, task=TASK, **settings)
+    (out / "results.json").write_text(json.dumps(results, indent=2))
+    if args.mode == "rolling-validation":
+        print("Mean rolling-validation R²:", np.mean([r["val_r2_mean"] for r in results]))
+    else:
+        for method in ("no_calibration", "output_correction", "anchored_refit"):
+            values = results[method] if args.mode == "cross-day" else [r[method] for r in results]
+            print(f"Mean {method} R²:", np.mean(values))
+
+
+if __name__ == "__main__":
+    main()

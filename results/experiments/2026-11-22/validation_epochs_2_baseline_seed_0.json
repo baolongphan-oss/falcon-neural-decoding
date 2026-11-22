@@ -1,0 +1,47 @@
+{
+  "provenance": "Reconstructed from the complete terminal output supplied in chat; previously saved under the historical minival filename",
+  "results": [
+    {
+      "fold": 1,
+      "train_days": [
+        "20120924"
+      ],
+      "val_day": "20120926",
+      "best_epoch": 1,
+      "val_mse": 0.8770641974218004,
+      "val_r2_mean": -0.18169957399368286,
+      "val_r2_sessions": [
+        -0.18169957399368286
+      ]
+    },
+    {
+      "fold": 2,
+      "train_days": [
+        "20120924",
+        "20120926"
+      ],
+      "val_day": "20120927",
+      "best_epoch": 1,
+      "val_mse": 0.48778543048417566,
+      "val_r2_mean": 0.5701379776000977,
+      "val_r2_sessions": [
+        0.5701379776000977
+      ]
+    },
+    {
+      "fold": 3,
+      "train_days": [
+        "20120924",
+        "20120926",
+        "20120927"
+      ],
+      "val_day": "20120928",
+      "best_epoch": 2,
+      "val_mse": 0.4621876739818922,
+      "val_r2_mean": 0.4370526969432831,
+      "val_r2_sessions": [
+        0.4370526969432831
+      ]
+    }
+  ]
+}

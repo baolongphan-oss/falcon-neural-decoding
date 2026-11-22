@@ -1,0 +1,30 @@
+{
+  "scope": "M1 held-in development recordings; simulated chronological transfer, not official held-out EvalAI results",
+  "seed_order": [
+    0,
+    1,
+    2
+  ],
+  "training_days_by_scored_day": {
+    "20120926": [
+      "20120924"
+    ],
+    "20120927": [
+      "20120924",
+      "20120926"
+    ],
+    "20120928": [
+      "20120924",
+      "20120926",
+      "20120927"
+    ]
+  },
+  "commands": {
+    "calibration_2": "python -m TCN.multiseed_calibration --mode calibration --epochs 2 --patience 8",
+    "calibration_50": "python -m TCN.multiseed_calibration --mode calibration --epochs 50 --patience 8",
+    "validation_50": "python -m TCN.multiseed_calibration --mode validation --epochs 50 --patience 8"
+  },
+  "setup": "Set FALCON_DATA to DANDI 000941 with held-in-calib and held-in-minival subdirectories. Install requirements plus falcon-challenge; scripts/requirements-local.txt records the verified local core versions.",
+  "reporting": "Days have equal weight within each seed; reported SD is sample SD across seed means. Calibration and validation scores use different selection procedures and scoring intervals.",
+  "provenance": "Completed runs copied from runs/. Validation config was reconstructed from the supplied command; per-seed records are unchanged. Historical single-seed baseline was recovered from terminal output and is labeled separately."
+}

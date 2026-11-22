@@ -1,0 +1,7 @@
+# Versions verified for the local Python 3.9 / Apple Silicon setup.
+# NumPy 1.26 avoids reproducible spurious matmul warnings seen with 2.0.2 here.
+numpy==1.26.4
+torch==2.8.0
+scikit-learn==1.6.1
+falcon-challenge==1.0.2
+requests==2.32.5

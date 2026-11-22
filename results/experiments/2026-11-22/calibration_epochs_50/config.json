@@ -1,0 +1,22 @@
+{
+  "task": "m1",
+  "data_root": "Set FALCON_DATA to the local DANDI 000941 directory",
+  "settings": {
+    "epochs": 50,
+    "patience": 8,
+    "smoothing": "ema",
+    "hidden": 32,
+    "dropout": 0.3,
+    "weight_decay": 0.001
+  },
+  "seeds": [
+    0,
+    1,
+    2
+  ],
+  "torch": "2.8.0",
+  "numpy": "1.26.4",
+  "threads": 1,
+  "early_stopping": "earlier-day minival",
+  "calibration": "first 3000 bins of first session; score remaining valid bins"
+}

@@ -1,0 +1,47 @@
+[
+  {
+    "fold": 1,
+    "train_days": [
+      "20120924"
+    ],
+    "calibration_day": "20120926",
+    "best_epoch": 2,
+    "no_calibration": 0.13487690687179565,
+    "output_correction": 0.3490229547023773,
+    "anchored_refit": 0.4579376936996327,
+    "anchored_lambda": 10,
+    "calibration_bins": 1405,
+    "scored_bins": 53071
+  },
+  {
+    "fold": 2,
+    "train_days": [
+      "20120924",
+      "20120926"
+    ],
+    "calibration_day": "20120927",
+    "best_epoch": 2,
+    "no_calibration": 0.5166659951210022,
+    "output_correction": 0.5409584045410156,
+    "anchored_refit": 0.5599757415397574,
+    "anchored_lambda": 10,
+    "calibration_bins": 792,
+    "scored_bins": 48436
+  },
+  {
+    "fold": 3,
+    "train_days": [
+      "20120924",
+      "20120926",
+      "20120927"
+    ],
+    "calibration_day": "20120928",
+    "best_epoch": 2,
+    "no_calibration": 0.2894428074359894,
+    "output_correction": 0.3900429606437683,
+    "anchored_refit": 0.43004963262900814,
+    "anchored_lambda": 10,
+    "calibration_bins": 1198,
+    "scored_bins": 53585
+  }
+]

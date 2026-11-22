@@ -1,0 +1,19 @@
+{
+  "task": "m1",
+  "settings": {
+    "epochs": 50,
+    "patience": 8,
+    "smoothing": "ema",
+    "hidden": 32,
+    "dropout": 0.3,
+    "weight_decay": 0.001
+  },
+  "seeds": [
+    0,
+    1,
+    2
+  ],
+  "threads": 1,
+  "early_stopping": "next chronological day",
+  "provenance": "Settings from the command supplied for this run; original runner saved only per-seed results"
+}

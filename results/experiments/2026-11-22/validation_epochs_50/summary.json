@@ -1,0 +1,32 @@
+{
+  "seeds": [
+    0,
+    1,
+    2
+  ],
+  "mean": 0.41386899910867214,
+  "std_across_seeds": 0.04654139394897912,
+  "seed_means": [
+    0.4489547808965047,
+    0.36107213981449604,
+    0.4315800766150157
+  ],
+  "selected_epochs": {
+    "20120926": [
+      2,
+      18,
+      17
+    ],
+    "20120927": [
+      4,
+      3,
+      8
+    ],
+    "20120928": [
+      9,
+      9,
+      1
+    ]
+  },
+  "score_interpretation": "Next-day model-selection scores; not independent test scores"
+}
